@@ -1,0 +1,15 @@
+{
+  "name": "notiyou-supabase-edge-fns",
+  "version": "1.0.0",
+  "description": "노티유 앱의 Supabase Project에서 사용되는 Edge Functions들을 관리하는 레파지토리입니다.",
+  "main": "index.js",
+  "scripts": {
+    "deploy-fn": "supabase functions deploy $1 --project-ref pmiivbdkefsnzznxghwb"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "supabase": "^2.6.8"
+  }
+}
