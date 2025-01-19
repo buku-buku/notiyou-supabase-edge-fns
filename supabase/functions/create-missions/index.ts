@@ -6,6 +6,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+const BATCH_SIZE = 500;
+
 interface ChallengerMissionTime {
   id: number;
   created_at: string;
@@ -52,18 +54,22 @@ Deno.serve(async (req) => {
       mission_at: missionTime.mission_at,
     }));
 
-    const { data: insertedData, error: insertError } = await supabaseClient
-      .from("mission_history")
-      .insert(missionHistories)
-      .select();
+    let insertedCount = 0;
+    for (const batch of chunkArray(missionHistories, BATCH_SIZE)) {
+      const { data: batchData, error: insertError } = await supabaseClient
+        .from("mission_history")
+        .insert(batch)
+        .select();
 
-    if (insertError) throw insertError;
+      if (insertError) throw insertError;
+      if (batchData) insertedCount += batchData.length;
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
-          count: insertedData?.length,
+          count: insertedCount,
         },
       }),
       {
@@ -113,4 +119,12 @@ class AuthorizationError extends Error {
     super(message);
     this.name = "AuthorizationError";
   }
+}
+
+export function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
 }
