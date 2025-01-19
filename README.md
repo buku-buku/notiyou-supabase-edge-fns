@@ -37,3 +37,32 @@ pnpm new-fn {function-name}
 ```bash
 pnpm deploy-fn {function-name}
 ```
+
+## 로컬 서버 실행하기
+
+1. supabase link
+   notiyou 프로젝트에 링크를 설정합니다.
+
+```bash
+npx supabase link --project-ref pmiivbdkefsnzznxghwb
+```
+
+2. 데이터베이스 마이그레이션
+   Supabase에서 설정한 Schema들을 로컬 서버에 적용합니다.
+   이때 db 비밀번호는 [노션 문서](https://www.notion.so/Supabase-Database-password-45a78f773f0f4db1af28cd6df7706fdb?pvs=4)에서 확인할 수 있습니다.
+
+```bash
+npx supabase db pull
+```
+
+3. 로컬 서버 실행
+
+```bash
+npx supabase start
+```
+
+4. 로컬 서버 종료
+
+```bash
+npx supabase stop
+```
