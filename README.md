@@ -10,16 +10,16 @@
 
 ## 개발 환경 설정
 
-- Supabase CLI 설치
+- supabase 패키지 설치
 
 ```bash
-brew install supabase
+pnpm i
 ```
 
-- Supabase CLI 로 로그인
+- Supabase CLI 로그인
 
 ```bash
-supabase login
+npx supabase login
 ```
 
 - Deno 설정
@@ -29,11 +29,11 @@ https://docs.deno.com/runtime/getting_started/setup_your_environment/
 ## Edge Functions 추가하기
 
 ```bash
-supabase functions new {function-name}
+pnpm new-fn {function-name}
 ```
 
 ## Edge Functions 배포하기
 
 ```bash
-supabase functions deploy {function-name} --project-ref pmiivbdkefsnzznxghwb
+pnpm deploy-fn {function-name}
 ```

@@ -4,6 +4,7 @@
   "description": "노티유 앱의 Supabase Project에서 사용되는 Edge Functions들을 관리하는 레파지토리입니다.",
   "main": "index.js",
   "scripts": {
+    "new-fn": "supabase functions new $1",
     "deploy-fn": "supabase functions deploy $1 --project-ref pmiivbdkefsnzznxghwb"
   },
   "keywords": [],
