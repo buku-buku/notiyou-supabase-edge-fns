@@ -23,6 +23,7 @@ Deno.serve(async (req) => {
     "Bearer ",
     "",
   );
+  let insertedCount = 0;
   try {
     if (!serviceRoleKey) {
       throw new AuthorizationError("Authorization header is missing");
@@ -54,15 +55,31 @@ Deno.serve(async (req) => {
       mission_at: missionTime.mission_at,
     }));
 
-    let insertedCount = 0;
-    for (const batch of chunkArray(missionHistories, BATCH_SIZE)) {
+    const missionHistoryBatches = chunkArray(missionHistories, BATCH_SIZE);
+
+    const failedMissionIds: number[] = [];
+    for (const batch of missionHistoryBatches) {
       const { data: batchData, error: insertError } = await supabaseClient
         .from("mission_history")
         .insert(batch)
         .select();
 
-      if (insertError) throw insertError;
-      if (batchData) insertedCount += batchData.length;
+      if (insertError) {
+        failedMissionIds.push(...batch.map((mission) => mission.mission_id));
+      } else if (batchData) {
+        insertedCount += batchData.length;
+      }
+    }
+
+    sendNotification(
+      `총 ${missionTimes.length}개의 미션 설정으로, ${insertedCount}개의 오늘의 미션이 생성되었습니다.`,
+    );
+
+    if (failedMissionIds.length > 0) {
+      throw new MissionCreationError(
+        "일부 미션 생성에 실패하였습니다.",
+        failedMissionIds,
+      );
     }
 
     return new Response(
@@ -77,6 +94,22 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error) {
+    if (error instanceof MissionCreationError) {
+      sendNotification(
+        `${error.message}
+        생성에 실패한 미션 설정 목록: ${error.failedMissionIds.join(", ")}`,
+      );
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error,
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 500,
+        },
+      );
+    }
     if (error instanceof AuthorizationError) {
       return new Response(
         JSON.stringify({
@@ -89,17 +122,31 @@ Deno.serve(async (req) => {
         },
       );
     }
+    if (error instanceof Error) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: error.message,
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 500,
+        },
+      );
+    }
 
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error,
-      }),
-      {
-        headers: { "Content-Type": "application/json" },
-        status: 400,
-      },
-    );
+    {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error,
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 500,
+        },
+      );
+    }
   }
 });
 
@@ -127,4 +174,29 @@ export function chunkArray<T>(array: T[], size: number): T[][] {
     chunks.push(array.slice(i, i + size));
   }
   return chunks;
+}
+
+function sendNotification(message: string) {
+  const slackWebhookUrl = Deno.env.get("SLACK_WEBHOOK_URL");
+  if (!slackWebhookUrl) {
+    console.error(
+      "SLACK_WEBHOOK_URL is not set. Notification will not be sent.",
+    );
+    return;
+  }
+
+  return fetch(slackWebhookUrl, {
+    method: "POST",
+    body: JSON.stringify({ text: message }),
+  });
+}
+
+class MissionCreationError extends Error {
+  failedMissionIds: number[];
+
+  constructor(message: string, failedMissionIds: number[]) {
+    super(message);
+    this.name = "MissionCreationError";
+    this.failedMissionIds = failedMissionIds;
+  }
 }
