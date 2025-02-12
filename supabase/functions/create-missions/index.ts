@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     );
 
     const { data: missionTimes, error: queryError } = await supabaseClient
-      .from("challenger_mission_time")
+      .from("mission_time")
       .select("*");
 
     if (queryError) throw queryError;
