@@ -4,7 +4,7 @@
 
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createSupabaseClient } from "../_shared/supabase-client.ts";
 
 const BATCH_SIZE = 500;
 
@@ -30,15 +30,7 @@ Deno.serve(async (req) => {
     }
 
     // Supabase 클라이언트 초기화
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      serviceRoleKey,
-      {
-        auth: {
-          persistSession: false,
-        },
-      },
-    );
+    const supabaseClient = createSupabaseClient(serviceRoleKey);
 
     const { data: missionTimes, error: queryError } = await supabaseClient
       .from("mission_time")
