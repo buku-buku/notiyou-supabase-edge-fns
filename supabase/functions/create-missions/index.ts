@@ -4,6 +4,7 @@
 
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { ServiceResponse } from "../_shared/service-response.ts";
 import { createSupabaseClient } from "../_shared/supabase-client.ts";
 
 const BATCH_SIZE = 500;
@@ -74,71 +75,48 @@ Deno.serve(async (req) => {
       );
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: {
-          count: insertedCount,
-        },
-      }),
-      {
-        headers: { "Content-Type": "application/json" },
+    return new ServiceResponse({
+      success: true,
+      data: {
+        count: insertedCount,
       },
-    );
+    });
   } catch (error) {
     if (error instanceof MissionCreationError) {
       sendNotification(
         `${error.message}
         생성에 실패한 미션 설정 목록: ${error.failedMissionIds.join(", ")}`,
       );
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 500,
-        },
-      );
+      return new ServiceResponse({
+        success: false,
+        error: error.message,
+      }, {
+        status: 500,
+      });
     }
     if (error instanceof AuthorizationError) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 401,
-        },
-      );
+      return new ServiceResponse({
+        success: false,
+        error: error.message,
+      }, {
+        status: 401,
+      });
     }
     if (error instanceof Error) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: error.message,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 500,
-        },
-      );
+      return new ServiceResponse({
+        success: false,
+        error: error.message,
+      }, {
+        status: 500,
+      });
     }
 
-    {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 500,
-        },
-      );
-    }
+    return new ServiceResponse({
+      success: false,
+      error: "알 수 없는 오류가 발생했습니다.",
+    }, {
+      status: 500,
+    });
   }
 });
 
