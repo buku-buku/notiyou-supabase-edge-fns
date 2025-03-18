@@ -14,13 +14,13 @@ import {
 /**
  * @link https://supabase.com/docs/guides/database/webhooks#payload
  */
-type RequestPayload = {
+interface RequestPayload {
   type: "UPDATE";
   table: "mission_history";
   schema: "public";
   record: MissionHistoryData;
   old_record: MissionHistoryData;
-};
+}
 
 Deno.serve(async (req) => {
   const { old_record, record } = await req.json() as RequestPayload;
