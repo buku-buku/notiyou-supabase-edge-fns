@@ -34,8 +34,9 @@ Deno.serve(async (req) => {
 
   // 조력자가 새로 등록된 경우
   if (oldSupporterId === null && newSupporterId) {
-    const supporterRegisteredMessageData = generateMessageData(challengerMetadataData, "challenger");
     try {
+      const supporterRegisteredMessageData = generateMessageData(challengerMetadataData, "challenger");
+      
       const result = await sendNotifications(firebaseMessaging, [supporterRegisteredMessageData]);
       await slackNotificationClient.send(`to Challenger: 서포터(${newSupporterId})가 초대를 수락했습니다.`)
       return new Response(
@@ -48,12 +49,12 @@ Deno.serve(async (req) => {
   }
 
   // 기존 조력자가 해제된 경우
-  if (oldSupporterId && newSupporterId === null) {
-    const supporterMetadataData = await getUserMetadataData(supabaseClient, oldSupporterId);
-    const supporterDismissMessageData = generateMessageData(supporterMetadataData, "supporter");
-    const challengerDismissMessageData = generateMessageData(challengerMetadataData, "challenger");
-    
+  if (oldSupporterId && newSupporterId === null) {    
     try {
+      const supporterMetadataData = await getUserMetadataData(supabaseClient, oldSupporterId);
+      const supporterDismissMessageData = generateMessageData(supporterMetadataData, "supporter");
+      const challengerDismissMessageData = generateMessageData(challengerMetadataData, "challenger");
+      
       const result = await sendNotifications(firebaseMessaging, [supporterDismissMessageData, challengerDismissMessageData]);
       await slackNotificationClient.send(`to Challenger: 서포터(${oldSupporterId})가 미션을 그만두었습니다.`)
       await slackNotificationClient.send(`to Supporter: 도전자(${challengerId})의 미션에서 해제되었습니다.`)
