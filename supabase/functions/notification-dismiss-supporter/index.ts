@@ -3,7 +3,7 @@ import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { firebaseMessaging, Messaging } from "../_shared/firebase-admin.ts";
 import { slackNotificationClient } from "../_shared/slack-notification-client.ts";
 import { createSupabaseClient } from "../_shared/supabase-client.ts";
-import { ChallengerSupporterData, DismissMessageData, UserMetadataData } from "./_types.ts";
+import { ChallengerSupporterData, MessageData, UserMetadataData } from "./_types.ts";
 
 type RequestPayload = {
   type: "UPDATE";
@@ -13,67 +13,70 @@ type RequestPayload = {
   old_record: ChallengerSupporterData;
 };
 
+const messages = {
+  register: '조력자가 초대를 수락했습니다.',
+  dismiss: {
+    challenger: '조력자가 그만두었습니다.',
+    supporter: '미션에서 해제되었습니다.'
+  }
+};
+
 Deno.serve(async (req) => {
   const { old_record, record } = await req.json() as RequestPayload;
-  
-  // 조력제 해제 이벤트가 아닌 경우
-  if (old_record.supporter_id === null || record.supporter_id) {
-    return new Response(JSON.stringify({
-      success: true,
-      message: "Not a supporter dismiss event",
-    }), {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      status: 200,
-    });
-  }
-
+  const { challenger_id:challengerId, supporter_id:oldSupporterId } = old_record;
+  const { supporter_id:newSupporterId } = record;
   const serviceRoleKey = req.headers.get("Authorization")?.replace(
     "Bearer ",
     "",
   );
-
   const supabaseClient = createSupabaseClient(serviceRoleKey);
-  const { challenger_id, supporter_id } = old_record;
-  const dismissMessageDataList: DismissMessageData[] = [];
+  const challengerMetadataData = await getUserMetadataData(supabaseClient, challengerId);
 
-  const supporterMetadataData = await getUserMetadataData(supabaseClient, supporter_id);
-  if (supporterMetadataData) {
-    const supporterDismissMessageData = generateDismissMessageData(supporterMetadataData, "supporter");
-    dismissMessageDataList.push(supporterDismissMessageData);
+  // 조력자가 새로 등록된 경우
+  if (oldSupporterId === null && newSupporterId) {
+    const supporterRegisteredMessageData = generateMessageData(challengerMetadataData, "challenger");
+    try {
+      const result = await sendNotifications(firebaseMessaging, [supporterRegisteredMessageData]);
+      await slackNotificationClient.send(`to Challenger: 서포터(${newSupporterId})가 초대를 수락했습니다.`)
+      return new Response(
+        JSON.stringify(result),
+        { headers: { "Content-Type": "application/json", status: 200, } },
+      )
+    } catch (error) {
+      console.error(`메시지 전송 실패: ${error.message}`);
+    }
   }
-  const challengerMetadataData = await getUserMetadataData(supabaseClient, challenger_id);
-  if (challengerMetadataData) {
-    const challengerDismissMessageData = generateDismissMessageData(challengerMetadataData, "challenger");
-    dismissMessageDataList.push(challengerDismissMessageData);
-  }
 
-  try {
-    const result = await sendNotifications(firebaseMessaging, dismissMessageDataList);
-    // TODO: 디버깅용 기능 제거
-    await slackNotificationClient.send(`to Challenger: 서포터(${supporter_id})가 미션을 그만두었습니다.`)
-    await slackNotificationClient.send(`to Supporter: 도전자(${challenger_id})의 미션에서 해제되었습니다.`)
-
-    return new Response(
-      JSON.stringify(result),
-      { headers: { "Content-Type": "application/json", status: 200, } },
-    )
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
+  // 기존 조력자가 해제된 경우
+  if (oldSupporterId && newSupporterId === null) {
+    const supporterMetadataData = await getUserMetadataData(supabaseClient, oldSupporterId);
+    const supporterDismissMessageData = generateMessageData(supporterMetadataData, "supporter");
+    const challengerDismissMessageData = generateMessageData(challengerMetadataData, "challenger");
+    
+    try {
+      const result = await sendNotifications(firebaseMessaging, [supporterDismissMessageData, challengerDismissMessageData]);
+      await slackNotificationClient.send(`to Challenger: 서포터(${oldSupporterId})가 미션을 그만두었습니다.`)
+      await slackNotificationClient.send(`to Supporter: 도전자(${challengerId})의 미션에서 해제되었습니다.`)
+      return new Response(
+        JSON.stringify(result),
+        { headers: { "Content-Type": "application/json", status: 200, } },
+      )
+    } catch (error) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: error instanceof Error
+            ? error.message
+            : "알 수 없는 오류가 발생했습니다.",
+        }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      },
-    );
+      );
+    }
   }
 })
 
@@ -100,23 +103,26 @@ async function getUserMetadataData(supabase: SupabaseClient, userId: string) {
   return data;
 }
 
-function generateDismissMessageData(
+function generateMessageData(
   userMetadataData: UserMetadataData,
+  messageType: "register" | "dismiss",
   userRole: "challenger" | "supporter",
 ) {
   return {
     token: userMetadataData?.fcm_token,
     title: '조력자 해제 알림',
-    message: userRole === "challenger" ? '조력자가 그만두었습니다.' : '미션에서 해제되었습니다.',
+    message: messageType === 'register' 
+      ? messages.register 
+      : messages.dismiss[userRole],
   }
 }
 
 async function sendNotifications(
   firebaseMessaging: Messaging,
-  dismissMessageDataList: DismissMessageData[],
+  messageDataList: MessageData[],
 ) {
   try {
-    const promises = dismissMessageDataList.map(async (data) => {
+    const promises = messageDataList.map(async (data) => {
       try {
         return await firebaseMessaging.send({
           token: data.token,

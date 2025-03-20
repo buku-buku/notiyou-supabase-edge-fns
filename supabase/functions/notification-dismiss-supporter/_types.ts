@@ -9,7 +9,7 @@ export interface ChallengerSupporterData {
   supporter_id: string;
 }
 
-export interface DismissMessageData {
+export interface MessageData {
   token: string;
   title: string;
   message: string;
