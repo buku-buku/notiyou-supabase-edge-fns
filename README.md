@@ -38,6 +38,15 @@ pnpm new-fn {function-name}
 pnpm deploy-fn {function-name}
 ```
 
+## Firebase Admin SDK 설정
+
+1. Firebase 콘솔에서 서비스 계정 키(JSON)를 다운로드합니다.
+2. 비공개 키 파일의 내용을 복사합니다.
+3. Supabase 대시보드에서 환경변수를 설정합니다:
+   - `FIREBASE_PRIVATE_KEY`: 비공개 키 파일의 내용
+   - `FIREBASE_PRIVATE_KEY_ID`: 비공개 키 ID
+   - `FIREBASE_CLIENT_ID`: 비공개 키 파일의 클라이언트 ID
+
 ## 로컬 서버 실행하기
 
 1. supabase link
