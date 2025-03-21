@@ -5,6 +5,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { ServiceResponse } from "../_shared/service-response.ts";
+import { slackNotificationClient } from "../_shared/slack-notification-client.ts";
 import { createSupabaseClient } from "../_shared/supabase-client.ts";
 
 const BATCH_SIZE = 500;
@@ -64,7 +65,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    sendNotification(
+    slackNotificationClient.send(
       `총 ${missionTimes.length}개의 미션 설정으로, ${insertedCount}개의 오늘의 미션이 생성되었습니다.`,
     );
 
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof MissionCreationError) {
-      sendNotification(
+      slackNotificationClient.send(
         `${error.message}
         생성에 실패한 미션 설정 목록: ${error.failedMissionIds.join(", ")}`,
       );
@@ -144,21 +145,6 @@ export function chunkArray<T>(array: T[], size: number): T[][] {
     chunks.push(array.slice(i, i + size));
   }
   return chunks;
-}
-
-function sendNotification(message: string) {
-  const slackWebhookUrl = Deno.env.get("SLACK_WEBHOOK_URL");
-  if (!slackWebhookUrl) {
-    console.error(
-      "SLACK_WEBHOOK_URL is not set. Notification will not be sent.",
-    );
-    return;
-  }
-
-  return fetch(slackWebhookUrl, {
-    method: "POST",
-    body: JSON.stringify({ text: message }),
-  });
 }
 
 class MissionCreationError extends Error {
