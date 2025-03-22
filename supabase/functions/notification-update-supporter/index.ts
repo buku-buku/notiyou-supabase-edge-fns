@@ -14,10 +14,16 @@ type RequestPayload = {
 };
 
 const messages = {
-  register: '조력자가 초대를 수락했습니다.',
+  register: {
+    title: '조력자 초대 알림',
+    message: '조력자가 초대를 수락했습니다.'},
   dismiss: {
-    challenger: '조력자가 그만두었습니다.',
-    supporter: '미션에서 해제되었습니다.'
+    challenger: {
+      title: '조력자 해제 알림',
+      message: '조력자가 그만두었습니다.'},
+    supporter: {
+      title: '조력자 해제 알림',
+      message: '미션에서 해제되었습니다.'}
   }
 };
 
@@ -111,10 +117,10 @@ function generateMessageData(
 ) {
   return {
     token: userMetadataData?.fcm_token,
-    title: '조력자 해제 알림',
+    title: messageType === 'register' ? messages.register.title : messages.dismiss[userRole].title,
     message: messageType === 'register' 
-      ? messages.register 
-      : messages.dismiss[userRole],
+      ? messages.register.message
+      : messages.dismiss[userRole].message,
   }
 }
 
