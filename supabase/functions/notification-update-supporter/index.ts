@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     try {
       const supporterMetadataData = await getUserMetadataData(supabaseClient, oldSupporterId);
       const supporterDismissMessageData = generateMessageData(supporterMetadataData, "dismiss", "supporter");
-      const challengerDismissMessageData = generateMessageData(challengerMetadataData, "challenger");
+      const challengerDismissMessageData = generateMessageData(challengerMetadataData, "dismiss","challenger");
       
       const result = await sendNotifications(firebaseMessaging, [supporterDismissMessageData, challengerDismissMessageData]);
       await slackNotificationClient.send(`to Challenger: 서포터(${oldSupporterId})가 미션을 그만두었습니다.`)
