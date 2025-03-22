@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { firebaseMessaging, Messaging } from "../_shared/firebase-admin.ts";
 import { slackNotificationClient } from "../_shared/slack-notification-client.ts";
+import { ServiceResponse } from "../_shared/service-response.ts";
 import { createSupabaseClient } from "../_shared/supabase-client.ts";
 import { ChallengerSupporterData, MessageData, UserMetadataData } from "./_types.ts";
 
@@ -45,12 +46,21 @@ Deno.serve(async (req) => {
       
       const result = await sendNotifications(firebaseMessaging, [supporterRegisteredMessageData]);
       await slackNotificationClient.send(`to Challenger: 서포터(${newSupporterId})가 초대를 수락했습니다.`)
-      return new Response(
-        JSON.stringify(result),
-        { headers: { "Content-Type": "application/json", status: 200, } },
-      )
+      return new ServiceResponse({
+        success: true,
+        data: result,
+      }, {
+        status: 200,
+      });
     } catch (error) {
-      console.error(`메시지 전송 실패: ${error.message}`);
+      return new ServiceResponse({
+        success: false,
+        error: error instanceof Error
+          ? error.message
+          : "알 수 없는 오류가 발생했습니다.",
+      }, {
+        status: 500,
+      });
     }
   }
 
@@ -64,25 +74,21 @@ Deno.serve(async (req) => {
       const result = await sendNotifications(firebaseMessaging, [supporterDismissMessageData, challengerDismissMessageData]);
       await slackNotificationClient.send(`to Challenger: 서포터(${oldSupporterId})가 미션을 그만두었습니다.`)
       await slackNotificationClient.send(`to Supporter: 도전자(${challengerId})의 미션에서 해제되었습니다.`)
-      return new Response(
-        JSON.stringify(result),
-        { headers: { "Content-Type": "application/json", status: 200, } },
-      )
+      return new ServiceResponse({
+        success: true,
+        data: result,
+      }, {
+        status: 200,
+      });
     } catch (error) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: error instanceof Error
-            ? error.message
-            : "알 수 없는 오류가 발생했습니다.",
-        }),
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
+      return new ServiceResponse({
+        success: false,
+        error: error instanceof Error
+          ? error.message
+          : "알 수 없는 오류가 발생했습니다.",
+      }, {
+        status: 500,
+      });
     }
   }
 })
