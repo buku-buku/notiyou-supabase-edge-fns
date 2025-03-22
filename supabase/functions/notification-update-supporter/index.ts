@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   // 조력자가 새로 등록된 경우
   if (oldSupporterId === null && newSupporterId) {
     try {
-      const supporterRegisteredMessageData = generateMessageData(challengerMetadataData, "challenger");
+      const supporterRegisteredMessageData = generateMessageData(challengerMetadataData, "register", "challenger");
       
       const result = await sendNotifications(firebaseMessaging, [supporterRegisteredMessageData]);
       await slackNotificationClient.send(`to Challenger: 서포터(${newSupporterId})가 초대를 수락했습니다.`)
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
   if (oldSupporterId && newSupporterId === null) {    
     try {
       const supporterMetadataData = await getUserMetadataData(supabaseClient, oldSupporterId);
-      const supporterDismissMessageData = generateMessageData(supporterMetadataData, "supporter");
+      const supporterDismissMessageData = generateMessageData(supporterMetadataData, "dismiss", "supporter");
       const challengerDismissMessageData = generateMessageData(challengerMetadataData, "challenger");
       
       const result = await sendNotifications(firebaseMessaging, [supporterDismissMessageData, challengerDismissMessageData]);
