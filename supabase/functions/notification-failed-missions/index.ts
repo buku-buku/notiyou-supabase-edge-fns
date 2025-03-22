@@ -1,6 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createSupabaseClient } from "../_shared/supabase-client.ts";
+import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { firebaseMessaging, Messaging } from "../_shared/firebase-admin.ts";
+import { ServiceResponse } from "../_shared/service-response.ts";
+import { createSupabaseClient } from "../_shared/supabase-client.ts";
 import {
   ChallengerGracePeriodData,
   ChallengerSupporterData,
@@ -9,8 +11,6 @@ import {
   MissionMessagesData,
   UserMetadataData,
 } from "./_types.ts";
-import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-
 Deno.serve(async (req) => {
   const serviceRoleKey = req.headers.get("Authorization")?.replace(
     "Bearer ",
@@ -27,38 +27,30 @@ Deno.serve(async (req) => {
     const failedMissions = await findFailedMissions(supabaseClient);
     const result = await sendNotifications(firebaseMessaging, failedMissions);
 
-    return new Response(JSON.stringify(result), {
-      headers: { "Content-Type": "application/json" },
+    return new ServiceResponse({
+      success: true,
+      data: result,
+    }, {
       status: 200,
     });
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: error.message,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 401,
-        },
-      );
+      return new ServiceResponse({
+        success: false,
+        error: error.message,
+      }, {
+        status: 401,
+      });
     }
 
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.",
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    return new ServiceResponse({
+      success: false,
+      error: error instanceof Error
+        ? error.message
+        : "알 수 없는 오류가 발생했습니다.",
+    }, {
+      status: 500,
+    });
   }
 });
 
