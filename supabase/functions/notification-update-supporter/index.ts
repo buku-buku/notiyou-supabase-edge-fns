@@ -91,6 +91,13 @@ Deno.serve(async (req) => {
       });
     }
   }
+
+  return new ServiceResponse({
+    success: false,
+    error: "Unprocessable update operation",
+  }, {
+    status: 422,
+  });
 })
 
 async function getUserMetadataData(supabase: SupabaseClient, userId: string) {
