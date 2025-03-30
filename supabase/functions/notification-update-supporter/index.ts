@@ -17,14 +17,26 @@ type RequestPayload = {
 const messages = {
   register: {
     title: '조력자 초대 알림',
-    message: '조력자가 초대를 수락했습니다.'},
+    message: '조력자가 초대를 수락했습니다.',
+    payload: {
+      destination: "/challenger/config",
+    }
+  },
   dismiss: {
     challenger: {
       title: '조력자 해제 알림',
-      message: '조력자가 그만두었습니다.'},
+      message: '조력자가 그만두었습니다.',
+      payload: {
+        destination: "/challenger/config",
+      }
+    },
     supporter: {
       title: '조력자 해제 알림',
-      message: '미션에서 해제되었습니다.'}
+      message: '미션에서 해제되었습니다.',
+      payload: {
+        destination: "/home",
+      }
+    }
   }
 };
 
@@ -134,6 +146,7 @@ function generateMessageData(
     message: messageType === 'register' 
       ? messages.register.message
       : messages.dismiss[userRole].message,
+    data: messageType === 'register' ? messages.register.payload : messages.dismiss[userRole].payload,
   }
 }
 
@@ -150,6 +163,7 @@ async function sendNotifications(
             title: data.title,
             body: data.message ?? "조력자가 해제되었습니다.",
           },
+          data: data.data,
         });
       } catch (error) {
         console.error(`메시지 전송 실패: ${error.message}`);

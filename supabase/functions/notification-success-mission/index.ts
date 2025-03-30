@@ -201,6 +201,9 @@ function sendNotifications(
         title: "도전자 미션 성공 알림",
         body: mission.success_message ?? "도전자가 미션을 성공했습니다.",
       },
+      data: {
+        destination: "/home",
+      }
     })),
   );
 }

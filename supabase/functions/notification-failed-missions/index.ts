@@ -224,6 +224,9 @@ function sendNotifications(
         title: "도전자 미션 실패 알림",
         body: mission.fail_message ?? "도전자가 미션을 실패했습니다.",
       },
+      data: {
+        destination: "/home",
+      }
     })),
   );
 }
