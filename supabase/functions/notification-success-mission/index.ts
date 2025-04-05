@@ -10,6 +10,7 @@ import {
   MissionTimeData,
   UserMetadataData,
 } from "./_types.ts";
+import { NotificationType } from "../_shared/types/notification.ts";
 
 /**
  * @link https://supabase.com/docs/guides/database/webhooks#payload
@@ -202,8 +203,8 @@ function sendNotifications(
         body: mission.success_message ?? "도전자가 미션을 성공했습니다.",
       },
       data: {
-        destination: "/home",
-      }
+        notification_type: NotificationType.MISSION_SUCCESS,
+      },
     })),
   );
 }
