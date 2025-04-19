@@ -11,6 +11,8 @@ import {
   MissionMessagesData,
   UserMetadataData,
 } from "./_types.ts";
+import { NotificationType } from "../_shared/types/notification.ts";
+
 Deno.serve(async (req) => {
   const serviceRoleKey = req.headers.get("Authorization")?.replace(
     "Bearer ",
@@ -223,6 +225,9 @@ function sendNotifications(
       notification: {
         title: "도전자 미션 실패 알림",
         body: mission.fail_message ?? "도전자가 미션을 실패했습니다.",
+      },
+      data: {
+        notification_type: NotificationType.MISSION_FAILED,
       },
     })),
   );

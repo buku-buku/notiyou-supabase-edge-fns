@@ -1,10 +1,15 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { firebaseMessaging, Messaging } from "../_shared/firebase-admin.ts";
 import { slackNotificationClient } from "../_shared/slack-notification-client.ts";
 import { ServiceResponse } from "../_shared/service-response.ts";
 import { createSupabaseClient } from "../_shared/supabase-client.ts";
-import { ChallengerSupporterData, MessageData, UserMetadataData } from "./_types.ts";
+import {
+  ChallengerSupporterData,
+  MessageData,
+  UserMetadataData,
+} from "./_types.ts";
+import { NotificationType } from "../_shared/types/notification.ts";
 
 type RequestPayload = {
   type: "UPDATE";
@@ -16,36 +21,69 @@ type RequestPayload = {
 
 const messages = {
   register: {
-    title: '조력자 초대 알림',
-    message: '조력자가 초대를 수락했습니다.'},
+    title: "조력자 초대 알림",
+    message: "조력자가 초대를 수락했습니다.",
+    data: {
+      notification_type: NotificationType.SUPPORTER_ASSIGNED,
+    },
+  },
   dismiss: {
     challenger: {
-      title: '조력자 해제 알림',
-      message: '조력자가 그만두었습니다.'},
+      title: "조력자 해제 알림",
+      message: "조력자가 그만두었습니다.",
+      data: {
+        notification_type: NotificationType.SUPPORTER_DISMISSED,
+      },
+    },
     supporter: {
-      title: '조력자 해제 알림',
-      message: '미션에서 해제되었습니다.'}
-  }
+      title: "조력자 해제 알림",
+      message: "미션에서 해제되었습니다.",
+      data: {
+        notification_type: NotificationType.SUPPORTER_DISMISSED,
+      },
+    },
+  },
 };
 
 Deno.serve(async (req) => {
   const { old_record, record } = await req.json() as RequestPayload;
-  const { challenger_id:challengerId, supporter_id:oldSupporterId } = old_record;
-  const { supporter_id:newSupporterId } = record;
+  const { challenger_id: challengerId, supporter_id: oldSupporterId } =
+    old_record;
+  const { supporter_id: newSupporterId } = record;
   const serviceRoleKey = req.headers.get("Authorization")?.replace(
     "Bearer ",
     "",
   );
-  const supabaseClient = createSupabaseClient(serviceRoleKey);
-  const challengerMetadataData = await getUserMetadataData(supabaseClient, challengerId);
+  const supabaseClient = createSupabaseClient(serviceRoleKey ?? "");
+  const challengerMetadataData = await getUserMetadataData(
+    supabaseClient,
+    challengerId,
+  );
+
+  if (!challengerMetadataData) {
+    return new ServiceResponse({
+      success: false,
+      error: "Challenger metadata data not found",
+    }, {
+      status: 404,
+    });
+  }
 
   // 조력자가 새로 등록된 경우
   if (oldSupporterId === null && newSupporterId) {
     try {
-      const supporterRegisteredMessageData = generateMessageData(challengerMetadataData, "register", "challenger");
-      
-      const result = await sendNotifications(firebaseMessaging, [supporterRegisteredMessageData]);
-      await slackNotificationClient.send(`to Challenger: 서포터(${newSupporterId})가 초대를 수락했습니다.`)
+      const supporterRegisteredMessageData = generateMessageData(
+        challengerMetadataData,
+        "register",
+        "challenger",
+      );
+
+      const result = await sendNotifications(firebaseMessaging, [
+        supporterRegisteredMessageData,
+      ]);
+      await slackNotificationClient.send(
+        `to Challenger: 서포터(${newSupporterId})가 초대를 수락했습니다.`,
+      );
       return new ServiceResponse({
         success: true,
         data: result,
@@ -65,15 +103,43 @@ Deno.serve(async (req) => {
   }
 
   // 기존 조력자가 해제된 경우
-  if (oldSupporterId && newSupporterId === null) {    
+  if (oldSupporterId && newSupporterId === null) {
     try {
-      const supporterMetadataData = await getUserMetadataData(supabaseClient, oldSupporterId);
-      const supporterDismissMessageData = generateMessageData(supporterMetadataData, "dismiss", "supporter");
-      const challengerDismissMessageData = generateMessageData(challengerMetadataData, "dismiss","challenger");
-      
-      const result = await sendNotifications(firebaseMessaging, [supporterDismissMessageData, challengerDismissMessageData]);
-      await slackNotificationClient.send(`to Challenger: 서포터(${oldSupporterId})가 미션을 그만두었습니다.`)
-      await slackNotificationClient.send(`to Supporter: 도전자(${challengerId})의 미션에서 해제되었습니다.`)
+      const supporterMetadataData = await getUserMetadataData(
+        supabaseClient,
+        oldSupporterId,
+      );
+
+      if (!supporterMetadataData) {
+        return new ServiceResponse({
+          success: false,
+          error: "Supporter metadata data not found",
+        }, {
+          status: 404,
+        });
+      }
+
+      const supporterDismissMessageData = generateMessageData(
+        supporterMetadataData,
+        "dismiss",
+        "supporter",
+      );
+      const challengerDismissMessageData = generateMessageData(
+        challengerMetadataData,
+        "dismiss",
+        "challenger",
+      );
+
+      const result = await sendNotifications(firebaseMessaging, [
+        supporterDismissMessageData,
+        challengerDismissMessageData,
+      ]);
+      await slackNotificationClient.send(
+        `to Challenger: 서포터(${oldSupporterId})가 미션을 그만두었습니다.`,
+      );
+      await slackNotificationClient.send(
+        `to Supporter: 도전자(${challengerId})의 미션에서 해제되었습니다.`,
+      );
       return new ServiceResponse({
         success: true,
         data: result,
@@ -98,7 +164,7 @@ Deno.serve(async (req) => {
   }, {
     status: 422,
   });
-})
+});
 
 async function getUserMetadataData(supabase: SupabaseClient, userId: string) {
   const { data, error } = await supabase
@@ -112,7 +178,7 @@ async function getUserMetadataData(supabase: SupabaseClient, userId: string) {
 
   if (error) {
     throw new Error(
-      `${userId}의 FCM 토큰 데이터를 가져오는 중 오류가 발생했습니다: ${error.message}`
+      `${userId}의 FCM 토큰 데이터를 가져오는 중 오류가 발생했습니다: ${error.message}`,
     );
   }
 
@@ -127,14 +193,19 @@ function generateMessageData(
   userMetadataData: UserMetadataData,
   messageType: "register" | "dismiss",
   userRole: "challenger" | "supporter",
-) {
+): MessageData {
   return {
     token: userMetadataData?.fcm_token,
-    title: messageType === 'register' ? messages.register.title : messages.dismiss[userRole].title,
-    message: messageType === 'register' 
+    title: messageType === "register"
+      ? messages.register.title
+      : messages.dismiss[userRole].title,
+    message: messageType === "register"
       ? messages.register.message
       : messages.dismiss[userRole].message,
-  }
+    data: messageType === "register"
+      ? messages.register.data
+      : messages.dismiss[userRole].data,
+  };
 }
 
 async function sendNotifications(
@@ -142,24 +213,35 @@ async function sendNotifications(
   messageDataList: MessageData[],
 ) {
   try {
-    const promises = messageDataList.map(async (data) => {
-      try {
-        return await firebaseMessaging.send({
-          token: data.token,
-          notification: {
-            title: data.title,
-            body: data.message ?? "조력자가 해제되었습니다.",
-          },
-        });
-      } catch (error) {
-        console.error(`메시지 전송 실패: ${error.message}`);
-        return null;
-      }
-    });
+    const promises = messageDataList.map(
+      async ({ token, title, message, data }) => {
+        try {
+          return await firebaseMessaging.send({
+            token,
+            notification: {
+              title,
+              body: message ?? "조력자가 해제되었습니다.",
+            },
+            data,
+          });
+        } catch (error: unknown) {
+          if (error instanceof Error) {
+            console.error(`메시지 전송 실패: ${error.message}`);
+          } else {
+            console.error(`메시지 전송 실패: ${error}`);
+          }
+          return null;
+        }
+      },
+    );
 
     const results = await Promise.all(promises);
-    return results.filter(result => result !== null);
-  } catch (error) {
-    throw new Error(`FCM 메시지 전송 중 오류 발생: ${error.message}`);
+    return results.filter((result) => result !== null);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      throw new Error(`FCM 메시지 전송 중 오류 발생: ${error.message}`);
+    } else {
+      throw new Error(`FCM 메시지 전송 중 오류 발생: ${error}`);
+    }
   }
 }
