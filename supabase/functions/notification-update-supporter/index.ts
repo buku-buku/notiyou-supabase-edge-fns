@@ -21,23 +21,23 @@ type RequestPayload = {
 
 const messages = {
   register: {
-    title: "조력자 초대 알림",
-    message: "조력자가 초대를 수락했습니다.",
+    title: "서포터 초대 알림",
+    message: "님이 초대를 수락했습니다.",
     data: {
       notification_type: NotificationType.SUPPORTER_ASSIGNED,
     },
   },
   dismiss: {
     challenger: {
-      title: "조력자 해제 알림",
-      message: "조력자가 그만두었습니다.",
+      title: "서포터 해제 알림",
+      message: "님이 미션에서 해제되었습니다.",
       data: {
         notification_type: NotificationType.SUPPORTER_DISMISSED,
       },
     },
     supporter: {
-      title: "조력자 해제 알림",
-      message: "미션에서 해제되었습니다.",
+      title: "서포터 해제 알림",
+      message: "님의 미션에서 해제되었습니다.",
       data: {
         notification_type: NotificationType.SUPPORTER_DISMISSED,
       },
@@ -72,10 +72,12 @@ Deno.serve(async (req) => {
   // 조력자가 새로 등록된 경우
   if (oldSupporterId === null && newSupporterId) {
     try {
+      const supporterName = await getUserName(supabaseClient, newSupporterId);
       const supporterRegisteredMessageData = generateMessageData(
         challengerMetadataData,
         "register",
         "challenger",
+        supporterName,
       );
 
       const result = await sendNotifications(firebaseMessaging, [
@@ -119,15 +121,20 @@ Deno.serve(async (req) => {
         });
       }
 
+      const challengerName = await getUserName(supabaseClient, challengerId);
+      const supporterName = await getUserName(supabaseClient, oldSupporterId);
+
       const supporterDismissMessageData = generateMessageData(
         supporterMetadataData,
         "dismiss",
         "supporter",
+        challengerName,
       );
       const challengerDismissMessageData = generateMessageData(
         challengerMetadataData,
         "dismiss",
         "challenger",
+        supporterName,
       );
 
       const result = await sendNotifications(firebaseMessaging, [
@@ -135,10 +142,10 @@ Deno.serve(async (req) => {
         challengerDismissMessageData,
       ]);
       await slackNotificationClient.send(
-        `to Challenger: 서포터(${oldSupporterId})가 미션을 그만두었습니다.`,
+        `to Challenger: 서포터 ${supporterName}(${oldSupporterId})가 미션을 그만두었습니다.`,
       );
       await slackNotificationClient.send(
-        `to Supporter: 도전자(${challengerId})의 미션에서 해제되었습니다.`,
+        `to Supporter: 도전자 ${challengerName}(${challengerId})의 미션에서 해제되었습니다.`,
       );
       return new ServiceResponse({
         success: true,
@@ -193,6 +200,7 @@ function generateMessageData(
   userMetadataData: UserMetadataData,
   messageType: "register" | "dismiss",
   userRole: "challenger" | "supporter",
+  participantName: string,
 ): MessageData {
   return {
     token: userMetadataData?.fcm_token,
@@ -200,8 +208,8 @@ function generateMessageData(
       ? messages.register.title
       : messages.dismiss[userRole].title,
     message: messageType === "register"
-      ? messages.register.message
-      : messages.dismiss[userRole].message,
+      ? participantName + messages.register.message
+      : participantName + messages.dismiss[userRole].message,
     data: messageType === "register"
       ? messages.register.data
       : messages.dismiss[userRole].data,
@@ -244,4 +252,20 @@ async function sendNotifications(
       throw new Error(`FCM 메시지 전송 중 오류 발생: ${error}`);
     }
   }
+}
+
+async function getUserName(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase
+    .from("user_metadata")
+    .select("name")
+    .eq("id", userId)
+    .single();
+
+  if (error) {
+    throw new Error(
+      `${userId}의 이름을 가져오는 중 오류가 발생했습니다: ${error.message}`,
+    );
+  }
+
+  return data?.name;
 }
