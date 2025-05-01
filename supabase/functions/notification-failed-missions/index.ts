@@ -3,6 +3,7 @@ import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { firebaseMessaging, Messaging } from "../_shared/firebase-admin.ts";
 import { ServiceResponse } from "../_shared/service-response.ts";
 import { createSupabaseClient } from "../_shared/supabase-client.ts";
+import { NotificationType } from "../_shared/types/notification.ts";
 import {
   ChallengerGracePeriodData,
   ChallengerSupporterData,
@@ -11,7 +12,6 @@ import {
   MissionMessagesData,
   UserMetadataData,
 } from "./_types.ts";
-import { NotificationType } from "../_shared/types/notification.ts";
 
 Deno.serve(async (req) => {
   const serviceRoleKey = req.headers.get("Authorization")?.replace(
@@ -27,7 +27,11 @@ Deno.serve(async (req) => {
     // 요청 본문 파싱
     const supabaseClient = createSupabaseClient(serviceRoleKey);
     const failedMissions = await findFailedMissions(supabaseClient);
-    const result = await sendNotifications(firebaseMessaging, failedMissions);
+    const result = await sendNotifications(
+      firebaseMessaging,
+      failedMissions,
+      supabaseClient,
+    );
 
     return new ServiceResponse({
       success: true,
@@ -71,6 +75,7 @@ async function findFailedMissions(
       id,
       done_at,
       mission_at,
+      last_failed_noti_sent_at,
       mission_time!inner (
         id,
         challenger_supporter_id
@@ -209,17 +214,28 @@ async function findFailedMissions(
     const isOverDeadline = nowHour > missionHour ||
       (nowHour === missionHour && nowMinute >= missionMinute);
 
-    return !mission.done_at && isOverDeadline;
+    return !mission.done_at && isOverDeadline &&
+      isNotRecentlyNotified(mission, now);
   });
 
   return failedMissions;
 }
 
-function sendNotifications(
+function isNotRecentlyNotified(mission: CombinedMissionData, now: Date) {
+  const lastNotifiedTime = mission.last_failed_noti_sent_at
+    ? new Date(mission.last_failed_noti_sent_at)
+    : null;
+
+  return !lastNotifiedTime ||
+    (now.getTime() - lastNotifiedTime.getTime()) > 10 * 60 * 1000;
+}
+
+async function sendNotifications(
   firebaseMessaging: Messaging,
   failedMissions: CombinedMissionData[],
+  supabase: SupabaseClient,
 ) {
-  return firebaseMessaging.sendEach(
+  const response = await firebaseMessaging.sendEach(
     failedMissions.map((mission) => ({
       token: mission.fcm_token,
       notification: {
@@ -231,6 +247,23 @@ function sendNotifications(
       },
     })),
   );
+
+  const successfulMissionIds = failedMissions
+    .filter((_, index) => response.responses[index].success)
+    .map((mission) => mission.id);
+
+  if (successfulMissionIds.length > 0) {
+    const { error } = await supabase
+      .from("mission_history")
+      .update({ last_failed_noti_sent_at: new Date().toISOString() })
+      .in("id", successfulMissionIds);
+
+    if (error) {
+      console.error("Failed to update last_failed_noti_sent_at:", error);
+    }
+  }
+
+  return response;
 }
 
 class AuthorizationError extends Error {

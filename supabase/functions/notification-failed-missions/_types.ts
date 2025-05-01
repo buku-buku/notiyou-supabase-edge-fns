@@ -2,6 +2,7 @@ export interface MissionHistoryData {
   id: number;
   done_at: string;
   mission_at: string;
+  last_failed_noti_sent_at: string | null;
   mission_time: {
     id: number;
     challenger_supporter_id: string;
@@ -35,6 +36,7 @@ export interface CombinedMissionData {
   id: number;
   done_at: string | null;
   mission_at: string;
+  last_failed_noti_sent_at: string | null;
   mission_time: {
     id: number;
     challenger_supporter_id: string;
