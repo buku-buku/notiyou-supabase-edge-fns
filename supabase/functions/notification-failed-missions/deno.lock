@@ -1,14 +1,37 @@
 {
   "version": "4",
   "specifiers": {
+    "jsr:@supabase/functions-js@*": "2.4.4",
+    "jsr:@supabase/supabase-js@2": "2.49.4",
     "npm:@supabase/auth-js@2.67.3": "2.67.3",
+    "npm:@supabase/auth-js@2.69.1": "2.69.1",
     "npm:@supabase/functions-js@2.4.4": "2.4.4",
     "npm:@supabase/node-fetch@2.6.15": "2.6.15",
     "npm:@supabase/postgrest-js@1.17.10": "1.17.10",
+    "npm:@supabase/postgrest-js@1.19.4": "1.19.4",
     "npm:@supabase/realtime-js@2.11.2": "2.11.2",
     "npm:@supabase/storage-js@2.7.1": "2.7.1",
     "npm:firebase-admin@*": "13.2.0",
     "npm:openai@^4.52.5": "4.86.2"
+  },
+  "jsr": {
+    "@supabase/functions-js@2.4.4": {
+      "integrity": "38456509a6e22fb116b118464cbb36357256f9048d3580632b63af91f63769f7",
+      "dependencies": [
+        "npm:openai"
+      ]
+    },
+    "@supabase/supabase-js@2.49.4": {
+      "integrity": "4b785f9cd4a62feb7b3f84606bb923a4ea51e3e000eafff0972bc779240b7592",
+      "dependencies": [
+        "npm:@supabase/auth-js@2.69.1",
+        "npm:@supabase/functions-js@2.4.4",
+        "npm:@supabase/node-fetch",
+        "npm:@supabase/postgrest-js@1.19.4",
+        "npm:@supabase/realtime-js",
+        "npm:@supabase/storage-js"
+      ]
+    }
   },
   "npm": {
     "@fastify/busboy@3.1.1": {
@@ -177,6 +200,12 @@
         "@supabase/node-fetch"
       ]
     },
+    "@supabase/auth-js@2.69.1": {
+      "integrity": "sha512-FILtt5WjCNzmReeRLq5wRs3iShwmnWgBvxHfqapC/VoljJl+W8hDAyFmf1NVw3zH+ZjZ05AKxiKxVeb0HNWRMQ==",
+      "dependencies": [
+        "@supabase/node-fetch"
+      ]
+    },
     "@supabase/functions-js@2.4.4": {
       "integrity": "sha512-WL2p6r4AXNGwop7iwvul2BvOtuJ1YQy8EbOd0dhG1oN1q8el/BIRSFCFnWAMM/vJJlHWLi4ad22sKbKr9mvjoA==",
       "dependencies": [
@@ -191,6 +220,12 @@
     },
     "@supabase/postgrest-js@1.17.10": {
       "integrity": "sha512-GlcwOjEmPcXfaEU0wHg1MgHU+peR+zZFyaEWjr7a7EOCB1gCtw3nW7ABfnPPH411coXHV90eb/isDgT9HRshLg==",
+      "dependencies": [
+        "@supabase/node-fetch"
+      ]
+    },
+    "@supabase/postgrest-js@1.19.4": {
+      "integrity": "sha512-O4soKqKtZIW3olqmbXXbKugUtByD2jPa8kL2m2c1oozAO11uCcGrRhkZL0kVxjBLrXHE0mdSkFsMj7jDSfyNpw==",
       "dependencies": [
         "@supabase/node-fetch"
       ]
