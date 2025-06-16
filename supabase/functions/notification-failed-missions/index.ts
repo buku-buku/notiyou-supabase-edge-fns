@@ -27,17 +27,58 @@ Deno.serve(async (req) => {
     // 요청 본문 파싱
     const supabaseClient = createSupabaseClient(serviceRoleKey);
     const failedMissions = await findFailedMissions(supabaseClient);
-    const result = await sendNotifications(
-      firebaseMessaging,
-      failedMissions,
-      supabaseClient,
-    );
 
-    return new ServiceResponse({
-      success: true,
-      data: result,
+    let resultChallenger;
+    let resultSupporter;
+    const errors = [];
+
+    try {
+      resultChallenger = await sendNotifications(
+        "challenger",
+        firebaseMessaging,
+        failedMissions.challenger,
+        supabaseClient,
+      );
+    } catch (error) {
+      errors.push({
+        target: "challenger",
+        error: error instanceof Error
+          ? error.message
+          : "알 수 없는 오류가 발생했습니다.",
+      });
+      resultChallenger = null;
+    }
+
+    try {
+      resultSupporter = await sendNotifications(
+        "supporter",
+        firebaseMessaging,
+        failedMissions.supporter,
+        supabaseClient,
+      );
+    } catch (error) {
+      errors.push({
+        target: "supporter",
+        error: error instanceof Error
+          ? error.message
+          : "알 수 없는 오류가 발생했습니다.",
+      });
+      resultSupporter = null;
+    }
+
+    // TODO: 응답 구조 개선. (challenger, supporter 부분 성공 처리 매끄럽게)
+    return new ServiceResponse<{
+      challenger: Messaging.SendResponse | null;
+      supporter: Messaging.SendResponse | null;
+    }>({
+      success: errors.length === 0,
+      data: {
+        challenger: resultChallenger,
+        supporter: resultSupporter,
+      },
+      error: JSON.stringify(errors),
     }, {
-      status: 200,
+      status: errors.length === 0 ? 200 : 207,
     });
   } catch (error) {
     if (error instanceof AuthorizationError) {
@@ -62,7 +103,10 @@ Deno.serve(async (req) => {
 
 async function findFailedMissions(
   supabase: SupabaseClient,
-): Promise<CombinedMissionData[]> {
+): Promise<{
+  supporter: CombinedMissionData[];
+  challenger: CombinedMissionData[];
+}> {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const tomorrow = new Date();
@@ -97,7 +141,10 @@ async function findFailedMissions(
 
   // 결과가 없으면 빈 배열 반환
   if (!missionsData || missionsData.length === 0) {
-    return [];
+    return {
+      supporter: [],
+      challenger: [],
+    };
   }
   // 두 번째 쿼리: challenger_supporter 데이터 가져오기
   const { data: challengerSupporterData, error: challengerSupporterError } =
@@ -212,24 +259,48 @@ async function findFailedMissions(
     };
   }).filter((item) => item !== null);
 
-  const failedMissions = combinedData.filter((mission) => {
-    const now = new Date();
-    const [nowHour, nowMinute] = now.toISOString().split("T")[1].split(":");
-    const [missionHour, missionMinute] = mission.mission_at.split(":");
+  function filterFailedMissions(
+    combinedData: CombinedMissionData[],
+    target: "supporter" | "challenger",
+  ) {
+    return combinedData.filter((mission) => {
+      const now = new Date();
+      const [nowHour, nowMinute] = now.toISOString().split("T")[1].split(":");
+      const [missionHour, missionMinute] = mission.mission_at.split(":");
 
-    const isOverDeadline = nowHour > missionHour ||
-      (nowHour === missionHour && nowMinute >= missionMinute);
+      const isOverDeadline = nowHour > missionHour ||
+        (nowHour === missionHour && nowMinute >= missionMinute);
 
-    return !mission.done_at && isOverDeadline &&
-      isNotRecentlyNotified(mission, now);
-  });
+      return !mission.done_at && isOverDeadline &&
+        isNotRecentlyNotified(mission, now, target);
+    });
+  }
 
-  return failedMissions;
+  const failedMissionsChallenger = filterFailedMissions(
+    combinedData,
+    "challenger",
+  );
+  const failedMissionsSupporter = filterFailedMissions(
+    combinedData,
+    "supporter",
+  );
+
+  return {
+    challenger: failedMissionsChallenger,
+    supporter: failedMissionsSupporter,
+  };
 }
 
-function isNotRecentlyNotified(mission: CombinedMissionData, now: Date) {
-  const lastNotifiedTime = mission.last_failed_noti_sent_at_supporter
-    ? new Date(mission.last_failed_noti_sent_at_supporter)
+function isNotRecentlyNotified(
+  mission: CombinedMissionData,
+  now: Date,
+  target: "supporter" | "challenger",
+) {
+  const targetColumn = `last_failed_noti_sent_at_${target}` as
+    | "last_failed_noti_sent_at_challenger"
+    | "last_failed_noti_sent_at_supporter";
+  const lastNotifiedTime = mission[targetColumn]
+    ? new Date(mission[targetColumn])
     : null;
 
   return !lastNotifiedTime ||
@@ -237,16 +308,19 @@ function isNotRecentlyNotified(mission: CombinedMissionData, now: Date) {
 }
 
 async function sendNotifications(
+  target: "supporter" | "challenger",
   firebaseMessaging: Messaging,
   failedMissions: CombinedMissionData[],
   supabase: SupabaseClient,
 ) {
   const response = await firebaseMessaging.sendEach(
     failedMissions.map((mission) => ({
-      token: mission.fcm_token.supporter,
+      token: mission.fcm_token[target],
       notification: {
-        title: "도전자 미션 실패 알림",
-        body: mission.fail_message ?? "도전자가 미션을 실패했습니다.",
+        title: "미션 실패 알림",
+        body: target === "challenger"
+          ? "아직 미션이 완료되지 않았습니다!"
+          : (mission.fail_message ?? "도전자가 미션을 실패했습니다."),
       },
       data: {
         notification_type: NotificationType.MISSION_FAILED,
@@ -259,15 +333,19 @@ async function sendNotifications(
     .map((mission) => mission.id);
 
   if (successfulMissionIds.length > 0) {
+    const updateColumn = `last_failed_noti_sent_at_${target}`;
     const { error } = await supabase
       .from("mission_history")
       .update({
-        last_failed_noti_sent_at_supporter: new Date().toISOString(),
+        [updateColumn]: new Date().toISOString(),
       })
       .in("id", successfulMissionIds);
 
     if (error) {
-      console.error("Failed to update last_failed_noti_sent_at:", error);
+      console.error(
+        `Failed to update ${updateColumn}:`,
+        error,
+      );
     }
   }
 
