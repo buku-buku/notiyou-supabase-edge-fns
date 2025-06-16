@@ -2,7 +2,8 @@ export interface MissionHistoryData {
   id: number;
   done_at: string;
   mission_at: string;
-  last_failed_noti_sent_at: string | null;
+  last_failed_noti_sent_at_challenger: string | null;
+  last_failed_noti_sent_at_supporter: string | null;
   mission_time: {
     id: number;
     challenger_supporter_id: string;
@@ -36,7 +37,8 @@ export interface CombinedMissionData {
   id: number;
   done_at: string | null;
   mission_at: string;
-  last_failed_noti_sent_at: string | null;
+  last_failed_noti_sent_at_challenger: string | null;
+  last_failed_noti_sent_at_supporter: string | null;
   mission_time: {
     id: number;
     challenger_supporter_id: string;
@@ -46,5 +48,8 @@ export interface CombinedMissionData {
   success_message: string;
   fail_message: string;
   grace_period: number;
-  fcm_token: string;
+  fcm_token: {
+    challenger: string;
+    supporter: string;
+  };
 }

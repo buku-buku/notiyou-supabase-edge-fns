@@ -27,17 +27,58 @@ Deno.serve(async (req) => {
     // 요청 본문 파싱
     const supabaseClient = createSupabaseClient(serviceRoleKey);
     const failedMissions = await findFailedMissions(supabaseClient);
-    const result = await sendNotifications(
-      firebaseMessaging,
-      failedMissions,
-      supabaseClient,
-    );
 
-    return new ServiceResponse({
-      success: true,
-      data: result,
+    let resultChallenger;
+    let resultSupporter;
+    const errors = [];
+
+    try {
+      resultChallenger = await sendNotifications(
+        "challenger",
+        firebaseMessaging,
+        failedMissions.challenger,
+        supabaseClient,
+      );
+    } catch (error) {
+      errors.push({
+        target: "challenger",
+        error: error instanceof Error
+          ? error.message
+          : "알 수 없는 오류가 발생했습니다.",
+      });
+      resultChallenger = null;
+    }
+
+    try {
+      resultSupporter = await sendNotifications(
+        "supporter",
+        firebaseMessaging,
+        failedMissions.supporter,
+        supabaseClient,
+      );
+    } catch (error) {
+      errors.push({
+        target: "supporter",
+        error: error instanceof Error
+          ? error.message
+          : "알 수 없는 오류가 발생했습니다.",
+      });
+      resultSupporter = null;
+    }
+
+    // TODO: 응답 구조 개선. (challenger, supporter 부분 성공 처리 매끄럽게)
+    return new ServiceResponse<{
+      challenger: Messaging.SendResponse | null;
+      supporter: Messaging.SendResponse | null;
+    }>({
+      success: errors.length === 0,
+      data: {
+        challenger: resultChallenger,
+        supporter: resultSupporter,
+      },
+      error: JSON.stringify(errors),
     }, {
-      status: 200,
+      status: errors.length === 0 ? 200 : 207,
     });
   } catch (error) {
     if (error instanceof AuthorizationError) {
@@ -62,7 +103,10 @@ Deno.serve(async (req) => {
 
 async function findFailedMissions(
   supabase: SupabaseClient,
-): Promise<CombinedMissionData[]> {
+): Promise<{
+  supporter: CombinedMissionData[];
+  challenger: CombinedMissionData[];
+}> {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const tomorrow = new Date();
@@ -75,7 +119,8 @@ async function findFailedMissions(
       id,
       done_at,
       mission_at,
-      last_failed_noti_sent_at,
+      last_failed_noti_sent_at_challenger,
+      last_failed_noti_sent_at_supporter,
       mission_time!inner (
         id,
         challenger_supporter_id
@@ -96,31 +141,35 @@ async function findFailedMissions(
 
   // 결과가 없으면 빈 배열 반환
   if (!missionsData || missionsData.length === 0) {
-    return [];
+    return {
+      supporter: [],
+      challenger: [],
+    };
   }
   // 두 번째 쿼리: challenger_supporter 데이터 가져오기
-  const { data: supporterData, error: supporterError } = await supabase
-    .from("challenger_supporter")
-    .select("id, challenger_id, supporter_id")
-    .in(
-      "id",
-      missionsData.map((mission) =>
-        mission.mission_time.challenger_supporter_id
-      ),
-    ) as unknown as {
-      data: ChallengerSupporterData[];
-      error: Error;
-    };
+  const { data: challengerSupporterData, error: challengerSupporterError } =
+    await supabase
+      .from("challenger_supporter")
+      .select("id, challenger_id, supporter_id")
+      .in(
+        "id",
+        missionsData.map((mission) =>
+          mission.mission_time.challenger_supporter_id
+        ),
+      ) as unknown as {
+        data: ChallengerSupporterData[];
+        error: Error;
+      };
 
-  if (supporterError) {
+  if (challengerSupporterError) {
     throw new Error(
-      "서포터 데이터를 가져오는 중 오류가 발생했습니다: " +
-        supporterError.message,
+      "챌린저-서포터 데이터를 가져오는 중 오류가 발생했습니다: " +
+        challengerSupporterError.message,
     );
   }
 
   // null이 아닌 supporter_id만 필터링
-  const validSupporterIds = supporterData
+  const validSupporterIds = challengerSupporterData
     .map((supporter) => supporter.supporter_id)
     .filter((id) => id);
 
@@ -141,8 +190,8 @@ async function findFailedMissions(
   }
 
   // null이 아닌 challenger_id만 필터링
-  const validChallengerIds = supporterData
-    .map((supporter) => supporter.challenger_id)
+  const validChallengerIds = challengerSupporterData
+    .map((challengerSupporter) => challengerSupporter.challenger_id)
     .filter((id) => id);
 
   // 네 번째 쿼리: grace_period 데이터 가져오기
@@ -165,7 +214,7 @@ async function findFailedMissions(
   const { data: userMetadataData, error: userMetadataError } = await supabase
     .from("user_metadata")
     .select("id, fcm_token")
-    .in("id", validSupporterIds) as unknown as {
+    .in("id", [...validSupporterIds, ...validChallengerIds]) as unknown as {
       data: UserMetadataData[];
       error: Error;
     };
@@ -179,68 +228,101 @@ async function findFailedMissions(
 
   // 데이터 결합
   const combinedData: CombinedMissionData[] = missionsData.map((mission) => {
-    const supporter = supporterData.find((s) =>
-      s.id === mission.mission_time.challenger_supporter_id
+    const challengerSupporter = challengerSupporterData.find((cs) =>
+      cs.id === mission.mission_time.challenger_supporter_id
     );
 
-    if (!supporter) return null;
+    if (!challengerSupporter) return null;
 
     const messages = messagesData.find((m) =>
-      m.user_id === supporter.supporter_id
+      m.user_id === challengerSupporter.supporter_id
     );
     const gracePeriod = gracePeriodData.find((gp) =>
-      gp.challenger_id === supporter.challenger_id
+      gp.challenger_id === challengerSupporter.challenger_id
     )?.grace_period || 0;
-    const fcmToken = userMetadataData.find((ft) =>
-      ft.id === supporter.supporter_id
+    const supporterFcmToken = userMetadataData.find((user) =>
+      user.id === challengerSupporter.supporter_id
+    )?.fcm_token || "";
+    const challengerFcmToken = userMetadataData.find((user) =>
+      user.id === challengerSupporter.challenger_id
     )?.fcm_token || "";
 
     return {
       ...mission,
-      supporter_id: supporter.supporter_id,
-      challenger_id: supporter.challenger_id,
+      supporter_id: challengerSupporter.supporter_id,
+      challenger_id: challengerSupporter.challenger_id,
       success_message: messages?.success_message || "",
       fail_message: messages?.fail_message || "",
       grace_period: gracePeriod,
-      fcm_token: fcmToken,
+      fcm_token: {
+        challenger: challengerFcmToken,
+        supporter: supporterFcmToken,
+      },
     };
   }).filter((item) => item !== null);
 
-  const failedMissions = combinedData.filter((mission) => {
-    const now = new Date();
-    const [nowHour, nowMinute] = now.toISOString().split("T")[1].split(":");
-    const [missionHour, missionMinute] = mission.mission_at.split(":");
+  function filterFailedMissions(
+    combinedData: CombinedMissionData[],
+    target: "supporter" | "challenger",
+  ) {
+    return combinedData.filter((mission) => {
+      const now = new Date();
+      const [nowHour, nowMinute] = now.toISOString().split("T")[1].split(":");
+      const [missionHour, missionMinute] = mission.mission_at.split(":");
 
-    const isOverDeadline = nowHour > missionHour ||
-      (nowHour === missionHour && nowMinute >= missionMinute);
+      const isOverDeadline = nowHour > missionHour ||
+        (nowHour === missionHour && nowMinute >= missionMinute);
 
-    return !mission.done_at && isOverDeadline &&
-      isNotRecentlyNotified(mission, now);
-  });
+      return !mission.done_at && isOverDeadline &&
+        isNotRecentlyNotified(mission, now, target);
+    });
+  }
 
-  return failedMissions;
+  const failedMissionsChallenger = filterFailedMissions(
+    combinedData,
+    "challenger",
+  );
+  const failedMissionsSupporter = filterFailedMissions(
+    combinedData,
+    "supporter",
+  );
+
+  return {
+    challenger: failedMissionsChallenger,
+    supporter: failedMissionsSupporter,
+  };
 }
 
-function isNotRecentlyNotified(mission: CombinedMissionData, now: Date) {
-  const lastNotifiedTime = mission.last_failed_noti_sent_at
-    ? new Date(mission.last_failed_noti_sent_at)
+function isNotRecentlyNotified(
+  mission: CombinedMissionData,
+  now: Date,
+  target: "supporter" | "challenger",
+) {
+  const targetColumn = `last_failed_noti_sent_at_${target}` as
+    | "last_failed_noti_sent_at_challenger"
+    | "last_failed_noti_sent_at_supporter";
+  const lastNotifiedTime = mission[targetColumn]
+    ? new Date(mission[targetColumn])
     : null;
 
   return !lastNotifiedTime ||
-    (now.getTime() - lastNotifiedTime.getTime()) > 10 * 60 * 1000;
+    (now.getTime() - lastNotifiedTime.getTime()) > 5 * 60 * 1000;
 }
 
 async function sendNotifications(
+  target: "supporter" | "challenger",
   firebaseMessaging: Messaging,
   failedMissions: CombinedMissionData[],
   supabase: SupabaseClient,
 ) {
   const response = await firebaseMessaging.sendEach(
     failedMissions.map((mission) => ({
-      token: mission.fcm_token,
+      token: mission.fcm_token[target],
       notification: {
-        title: "도전자 미션 실패 알림",
-        body: mission.fail_message ?? "도전자가 미션을 실패했습니다.",
+        title: "미션 실패 알림",
+        body: target === "challenger"
+          ? "아직 미션이 완료되지 않았습니다!"
+          : (mission.fail_message ?? "도전자가 미션을 실패했습니다."),
       },
       data: {
         notification_type: NotificationType.MISSION_FAILED,
@@ -253,13 +335,19 @@ async function sendNotifications(
     .map((mission) => mission.id);
 
   if (successfulMissionIds.length > 0) {
+    const updateColumn = `last_failed_noti_sent_at_${target}`;
     const { error } = await supabase
       .from("mission_history")
-      .update({ last_failed_noti_sent_at: new Date().toISOString() })
+      .update({
+        [updateColumn]: new Date().toISOString(),
+      })
       .in("id", successfulMissionIds);
 
     if (error) {
-      console.error("Failed to update last_failed_noti_sent_at:", error);
+      console.error(
+        `Failed to update ${updateColumn}:`,
+        error,
+      );
     }
   }
 
