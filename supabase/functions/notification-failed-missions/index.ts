@@ -211,19 +211,18 @@ async function findFailedMissions(
   }
 
   // 다섯 번째 쿼리: fcm_token 데이터 가져오기
-  const { data: supporterMetadataData, error: supporterMetadataError } =
-    await supabase
-      .from("user_metadata")
-      .select("id, fcm_token")
-      .in("id", validSupporterIds) as unknown as {
-        data: UserMetadataData[];
-        error: Error;
-      };
+  const { data: userMetadataData, error: userMetadataError } = await supabase
+    .from("user_metadata")
+    .select("id, fcm_token")
+    .in("id", [...validSupporterIds, ...validChallengerIds]) as unknown as {
+      data: UserMetadataData[];
+      error: Error;
+    };
 
-  if (supporterMetadataError) {
+  if (userMetadataError) {
     throw new Error(
       "FCM 토큰 데이터를 가져오는 중 오류가 발생했습니다: " +
-        supporterMetadataError.message,
+        userMetadataError.message,
     );
   }
 
@@ -241,8 +240,11 @@ async function findFailedMissions(
     const gracePeriod = gracePeriodData.find((gp) =>
       gp.challenger_id === challengerSupporter.challenger_id
     )?.grace_period || 0;
-    const supporterFcmToken = supporterMetadataData.find((ft) =>
-      ft.id === challengerSupporter.supporter_id
+    const supporterFcmToken = userMetadataData.find((user) =>
+      user.id === challengerSupporter.supporter_id
+    )?.fcm_token || "";
+    const challengerFcmToken = userMetadataData.find((user) =>
+      user.id === challengerSupporter.challenger_id
     )?.fcm_token || "";
 
     return {
@@ -253,7 +255,7 @@ async function findFailedMissions(
       fail_message: messages?.fail_message || "",
       grace_period: gracePeriod,
       fcm_token: {
-        challenger: "",
+        challenger: challengerFcmToken,
         supporter: supporterFcmToken,
       },
     };
@@ -304,7 +306,7 @@ function isNotRecentlyNotified(
     : null;
 
   return !lastNotifiedTime ||
-    (now.getTime() - lastNotifiedTime.getTime()) > 10 * 60 * 1000;
+    (now.getTime() - lastNotifiedTime.getTime()) > 5 * 60 * 1000;
 }
 
 async function sendNotifications(
