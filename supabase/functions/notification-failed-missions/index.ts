@@ -75,7 +75,8 @@ async function findFailedMissions(
       id,
       done_at,
       mission_at,
-      last_failed_noti_sent_at,
+      last_failed_noti_sent_at_challenger,
+      last_failed_noti_sent_at_supporter,
       mission_time!inner (
         id,
         challenger_supporter_id
@@ -227,8 +228,8 @@ async function findFailedMissions(
 }
 
 function isNotRecentlyNotified(mission: CombinedMissionData, now: Date) {
-  const lastNotifiedTime = mission.last_failed_noti_sent_at
-    ? new Date(mission.last_failed_noti_sent_at)
+  const lastNotifiedTime = mission.last_failed_noti_sent_at_supporter
+    ? new Date(mission.last_failed_noti_sent_at_supporter)
     : null;
 
   return !lastNotifiedTime ||
@@ -260,7 +261,9 @@ async function sendNotifications(
   if (successfulMissionIds.length > 0) {
     const { error } = await supabase
       .from("mission_history")
-      .update({ last_failed_noti_sent_at: new Date().toISOString() })
+      .update({
+        last_failed_noti_sent_at_supporter: new Date().toISOString(),
+      })
       .in("id", successfulMissionIds);
 
     if (error) {
