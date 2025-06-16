@@ -46,5 +46,8 @@ export interface CombinedMissionData {
   success_message: string;
   fail_message: string;
   grace_period: number;
-  fcm_token: string;
+  fcm_token: {
+    challenger: string;
+    supporter: string;
+  };
 }

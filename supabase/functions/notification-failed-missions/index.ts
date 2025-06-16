@@ -99,28 +99,29 @@ async function findFailedMissions(
     return [];
   }
   // 두 번째 쿼리: challenger_supporter 데이터 가져오기
-  const { data: supporterData, error: supporterError } = await supabase
-    .from("challenger_supporter")
-    .select("id, challenger_id, supporter_id")
-    .in(
-      "id",
-      missionsData.map((mission) =>
-        mission.mission_time.challenger_supporter_id
-      ),
-    ) as unknown as {
-      data: ChallengerSupporterData[];
-      error: Error;
-    };
+  const { data: challengerSupporterData, error: challengerSupporterError } =
+    await supabase
+      .from("challenger_supporter")
+      .select("id, challenger_id, supporter_id")
+      .in(
+        "id",
+        missionsData.map((mission) =>
+          mission.mission_time.challenger_supporter_id
+        ),
+      ) as unknown as {
+        data: ChallengerSupporterData[];
+        error: Error;
+      };
 
-  if (supporterError) {
+  if (challengerSupporterError) {
     throw new Error(
-      "서포터 데이터를 가져오는 중 오류가 발생했습니다: " +
-        supporterError.message,
+      "챌린저-서포터 데이터를 가져오는 중 오류가 발생했습니다: " +
+        challengerSupporterError.message,
     );
   }
 
   // null이 아닌 supporter_id만 필터링
-  const validSupporterIds = supporterData
+  const validSupporterIds = challengerSupporterData
     .map((supporter) => supporter.supporter_id)
     .filter((id) => id);
 
@@ -141,8 +142,8 @@ async function findFailedMissions(
   }
 
   // null이 아닌 challenger_id만 필터링
-  const validChallengerIds = supporterData
-    .map((supporter) => supporter.challenger_id)
+  const validChallengerIds = challengerSupporterData
+    .map((challengerSupporter) => challengerSupporter.challenger_id)
     .filter((id) => id);
 
   // 네 번째 쿼리: grace_period 데이터 가져오기
@@ -162,47 +163,51 @@ async function findFailedMissions(
   }
 
   // 다섯 번째 쿼리: fcm_token 데이터 가져오기
-  const { data: userMetadataData, error: userMetadataError } = await supabase
-    .from("user_metadata")
-    .select("id, fcm_token")
-    .in("id", validSupporterIds) as unknown as {
-      data: UserMetadataData[];
-      error: Error;
-    };
+  const { data: supporterMetadataData, error: supporterMetadataError } =
+    await supabase
+      .from("user_metadata")
+      .select("id, fcm_token")
+      .in("id", validSupporterIds) as unknown as {
+        data: UserMetadataData[];
+        error: Error;
+      };
 
-  if (userMetadataError) {
+  if (supporterMetadataError) {
     throw new Error(
       "FCM 토큰 데이터를 가져오는 중 오류가 발생했습니다: " +
-        userMetadataError.message,
+        supporterMetadataError.message,
     );
   }
 
   // 데이터 결합
   const combinedData: CombinedMissionData[] = missionsData.map((mission) => {
-    const supporter = supporterData.find((s) =>
-      s.id === mission.mission_time.challenger_supporter_id
+    const challengerSupporter = challengerSupporterData.find((cs) =>
+      cs.id === mission.mission_time.challenger_supporter_id
     );
 
-    if (!supporter) return null;
+    if (!challengerSupporter) return null;
 
     const messages = messagesData.find((m) =>
-      m.user_id === supporter.supporter_id
+      m.user_id === challengerSupporter.supporter_id
     );
     const gracePeriod = gracePeriodData.find((gp) =>
-      gp.challenger_id === supporter.challenger_id
+      gp.challenger_id === challengerSupporter.challenger_id
     )?.grace_period || 0;
-    const fcmToken = userMetadataData.find((ft) =>
-      ft.id === supporter.supporter_id
+    const supporterFcmToken = supporterMetadataData.find((ft) =>
+      ft.id === challengerSupporter.supporter_id
     )?.fcm_token || "";
 
     return {
       ...mission,
-      supporter_id: supporter.supporter_id,
-      challenger_id: supporter.challenger_id,
+      supporter_id: challengerSupporter.supporter_id,
+      challenger_id: challengerSupporter.challenger_id,
       success_message: messages?.success_message || "",
       fail_message: messages?.fail_message || "",
       grace_period: gracePeriod,
-      fcm_token: fcmToken,
+      fcm_token: {
+        challenger: "",
+        supporter: supporterFcmToken,
+      },
     };
   }).filter((item) => item !== null);
 
@@ -237,7 +242,7 @@ async function sendNotifications(
 ) {
   const response = await firebaseMessaging.sendEach(
     failedMissions.map((mission) => ({
-      token: mission.fcm_token,
+      token: mission.fcm_token.supporter,
       notification: {
         title: "도전자 미션 실패 알림",
         body: mission.fail_message ?? "도전자가 미션을 실패했습니다.",
